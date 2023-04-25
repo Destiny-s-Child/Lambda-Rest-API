@@ -209,7 +209,7 @@ resource "aws_api_gateway_integration" "lambda" {
 
 }
 
-resource "aws_api_gateway_integration_response" "dummy_integration_response" {
+resource "aws_api_gateway_integration_response" "integration_response" {
   rest_api_id = "${aws_api_gateway_rest_api.rest_api.id}"
   resource_id = "${aws_api_gateway_rest_api.rest_api.root_resource_id}"
   http_method = "${aws_api_gateway_method.get_method.http_method}"
