@@ -4,7 +4,7 @@ provider "aws" {
 provider "archive" {}
 data "archive_file" "zip" {
     type        = "zip"
-    source_dir  = "C:\\Users\\MyyaB\\OneDrive\\Desktop\\proj3\\to_aws.zip"
+    source_dir  = "C:\\Users\\MyyaB\\OneDrive\\Desktop\\proj3\\lambda\\to_aws.zip"
     output_path = "index.zip"
 }
 
@@ -174,49 +174,53 @@ resource "aws_api_gateway_rest_api" "rest_api" {
     endpoint_configuration {
       types = ["REGIONAL"]
     }
-    description = "Rest API for lambda invocation"
-}
-
-resource "aws_api_gateway_resource" "test_api" {
-    rest_api_id     = "${aws_api_gateway_rest_api.rest_api.id}"
-    parent_id       = "${aws_api_gateway_rest_api.rest_api.root_resource_id}"
-    path_part       = "${aws_api_gateway_rest_api.rest_api.root_resource_id}"
+    description = "Rest API for lambda invocation with CORS enabled"
 }
 
 resource "aws_api_gateway_method" "get_method" {
     rest_api_id   = "${aws_api_gateway_rest_api.rest_api.id}"
-    resource_id   = "${aws_api_gateway_resource.test_api.id}"
+    resource_id   = "${aws_api_gateway_rest_api.rest_api.root_resource_id}"
     http_method   = "GET"
     authorization = "NONE"
 }
 
 resource "aws_api_gateway_method_response" "get_response" {
   rest_api_id = "${aws_api_gateway_rest_api.rest_api.id}"
-  resource_id = "${aws_api_gateway_resource.test_api.id}"
+  resource_id = "${aws_api_gateway_rest_api.rest_api.root_resource_id}"
   http_method = "${aws_api_gateway_method.get_method.http_method}"
   status_code = "200"
-
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
 }
 
 resource "aws_api_gateway_integration" "lambda" {
     rest_api_id = "${aws_api_gateway_rest_api.rest_api.id}"
-    resource_id = "${aws_api_gateway_resource.test_api.id}"
+    resource_id = "${aws_api_gateway_rest_api.rest_api.root_resource_id}"
     http_method = "${aws_api_gateway_method.get_method.http_method}"
-
-    integration_http_method = "${aws_api_gateway_method.get_method.http_method}"
+    integration_http_method = "POST"
     type                    = "AWS"
     uri                     = "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/${aws_lambda_function.lambda.arn}/invocations"
 
 }
 
-resource "aws_api_gateway_integration_response" "integration_response" {
-  rest_api_id = "${aws_api_gateway_rest_api.rest_api.id}"
-  resource_id = "${aws_api_gateway_rest_api.rest_api.root_resource_id}"
-  http_method = "${aws_api_gateway_method.get_method.http_method}"
-  status_code = "${aws_api_gateway_method_response.get_response.status_code}"
-  depends_on  = [aws_api_gateway_integration.lambda]
-
+resource "aws_api_gateway_integration_response" "get_integrated_response" {
+    rest_api_id = "${aws_api_gateway_rest_api.rest_api.id}"
+    resource_id = "${aws_api_gateway_rest_api.rest_api.root_resource_id}"
+    http_method = "${aws_api_gateway_method.get_method.http_method}"
+    status_code = "${aws_api_gateway_method_response.get_response.status_code}"
+      response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'*'",
+    "method.response.header.Access-Control-Allow-Methods" = "'POST,GET,OPTIONS'",
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+    response_templates = {
+      "application/json" = ""
+  }
 }
+
 
 resource "aws_lambda_permission" "allow_api_gateway" {
     function_name = "${aws_lambda_function.lambda.id}"
@@ -230,15 +234,9 @@ resource "aws_api_gateway_deployment" "deploy" {
   rest_api_id = aws_api_gateway_rest_api.rest_api.id
 
   triggers = {
-    # NOTE: The configuration below will satisfy ordering considerations,
-    #       but not pick up all future REST API changes. More advanced patterns
-    #       are possible, such as using the filesha1() function against the
-    #       Terraform configuration file(s) or removing the .id references to
-    #       calculate a hash against whole resources. Be aware that using whole
-    #       resources will show a difference after the initial implementation.
-    #       It will stabilize to only change when resources change afterwards.
+  
     redeployment = sha1(jsonencode([
-      aws_api_gateway_resource.test_api.id,
+      aws_api_gateway_rest_api.rest_api.root_resource_id,
       aws_api_gateway_method.get_method.id,
       aws_api_gateway_integration.lambda.id,
     ]))
